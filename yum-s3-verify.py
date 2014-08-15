@@ -14,8 +14,8 @@ Attributes:
 
 
 
-import boto
-import boto.s3.connection
+from boto.s3.connection import S3Connection
+from boto.s3.key import Key
 import os
 import sys
 import docopt
@@ -35,8 +35,16 @@ class s3yumrepo(object):
     def __init__(self, auth, baseurl):
         (access_key, secret_key) = get_creds_from_env()
         conn = boto.connect_s3(aws_access_key_id = access_key, aws_secret_access_key = secret_key)
+        conn = S3Connection('____________________', '________________________________________')
+        bucket = conn.get_bucket('bucketname')
+        key = bucket.get_key("picture.jpg")
+        fp = open ("picture.jpg", "w")
+        key.get_file (fp)
         key = bucket.get_key('perl_poetry.pdf')
         key.get_contents_to_filename('/home/larry/documents/perl_poetry.pdf')
+    def unpack(self)
+        pass
+    def 
   
 
 def main():
