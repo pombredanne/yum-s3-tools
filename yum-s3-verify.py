@@ -1,12 +1,11 @@
-#!/bin/env python
+#!/usr/bin/env python
 """
 Usage: 
-    yum-s3-verify.py --bucket=<bucket-name> --package-name=<package-name>  [--env|--iam] [--debug] [-v]
-
+    yum-s3-verify.py --repourl=<repo-url> --package=<package-name>  [--env|--iam] [--debug] [-v]
 
 Attributes:
-    --bucket=<bucket-name> -b             Bucket name to scan
-    --package-name=<package-name> -p      Package name to search for
+    --repourl=<repourl> -r      Package name to search for
+    --package=<package-name> -p      Package name to search for
     --env                                 Pull credentials from the environment
     --iam                                 Use IAM policy (Instance Profile) to obtain credentials
     --debug                               Show more debug info
@@ -21,7 +20,8 @@ import os
 import sys
 import docopt
 import tempfile
-from xml import minidom
+from xml.dom import minidom
+import bz2,sqlite3
 
 class Credentials(object):
     def __init__(self):
@@ -31,7 +31,6 @@ class Credentials(object):
         try:
             access_key = os.environ['AWS_ACCESS_KEY']
             secret_key = os.environ['AWS_SECRET_KEY']
-            region = os.environ['AWS_REGION']
         except:
             print "Environment not set properly!"
             sys.exit(1)
@@ -41,67 +40,94 @@ class Credentials(object):
     def iam(self):
         pass
 
-class S3yumrepo(object):
-    def __init__(self, auth, repo_url):
+class S3YumRepo(object):
+    def __init__(self, auth, repo_url, debug = False):
         creds = Credentials()
         (access_key, secret_key) = getattr(creds, auth)
         s3 = boto.connect_s3(aws_access_key_id=access_key,
                              aws_secret_access_key=secret_key)
         (self.repo_bucket_name, self.repo_path) = self.parse_s3_url(repo_url)
         self.bucket = s3.get_bucket(self.repo_bucket_name)
-        self.repomd = bucket.get_key("{0}/repodata/repomd.xml".format(self.repo_path)).read()
-        self.locations = self.repomd_locations(repomd)
-        self.tmpdir = tempdir.mkdtemp()
-        for location in locations:
+        self.repomd = self.bucket.get_key("{0}/repodata/repomd.xml".format(self.repo_path)).read()
+        if debug: 
+            print "Getting repomd" 
+            print self.repomd
+        self.locations = self.repomd_locations(self.repomd)
+        if debug: 
+            print "Locations"
+            print self.locations
+        self.tmpdir = tempfile.mkdtemp()
+        if debug: 
+            print "Using tmpdir"
+            print self.tmpdir
+        for location in self.locations:
+            if debug:
+                print "Processing {0}".format(location)
             dest_filename = os.path.basename(location)
             sqlite_db = dest_filename.partition('.')[0]
-            print "- Downloading {0}".format(sqlite_db)
-            key = bucket.get_key(location)
+            key = self.bucket.get_key("{0}/{1}".format(self.repo_path,location))
+            if debug:
+                print "key:{0}".format(key)
             dest_path = "{0}/{1}".format(self.tmpdir, dest_filename)
             key.get_contents_to_filename(dest_path)
             setattr(self, sqlite_db, dest_path) 
 
     @property
     def packages(self):
+        """
+        Returns a dictionary of packages.
+        Key is package name
+        Value is version of the package
+        """
         packages = {}
-        primary_sqlite = bz2.BZ2File(self.primary) 
-        primary_sqlite_uncompressed = tempfile.mktemp()
-        with open(primary_sqlite_uncompressed, 'w') as p:
-            p.write(primary_sqlite.read())
-
-        sq = sqlite3.connect(primary_sqlite_uncompressed)   
-        results = sq.execute("select * from packages")
-
-        for (pkg, ver) in results:
-            packages[pkg] = ver
-
+        self.sqlite = {}
+        with tempfile.NamedTemporaryFile() as u:
+            with bz2.BZ2File(getattr(self,'primary')) as c:
+                u.write(c.read())
+            conn = sqlite3.connect(u.name)
+            results = conn.execute("select * from packages")
+            results = results.fetchall()
+        for r in results:
+            versions = ""
+            version = "{0}-{1}".format(r[4],r[6])
+            if packages.get(r):
+                versions += version
+            else:
+                versions = version
+            packages[r[2]]=versions
         return packages
 
     def parse_s3_url(self, repo_url):
+        """
+        Returns tupe of bucketname and path from http url
+        """
         #HACK: make it clear
         bucket_name = repo_url.partition('.s3')[0].replace('https://','').replace('http://','')
         path = repo_url.partition('.s3')[2].partition('/')[2]
         return (bucket_name, path)
 
     def repomd_locations(self, repomd):
+        """
+        Extract locations from repomd.xml
+        """
         parsed = minidom.parseString(repomd)
         data = [ d for d in parsed.childNodes[0].childNodes if d.nodeType == 1 ]
         locations = [ l.childNodes[1].getAttribute('href') for l in data if l.childNodes[1].getAttribute('href') ]
         return locations
 
-    def __del__(self):
-        os.rmdir(self.tmpdir)
-
-    
 def main():
     arguments = docopt.docopt(__doc__)
-    if arguments['--debug']:
+    debug = arguments['--debug']
+    if debug: 
         print arguments
     #repo_url should follow the format of 
     #repo_url='https://com.twilio.dev.packages.s3.amazonaws.com/cent6/'
-    repo_url = arguments['--repourl']
     #hardcoding env auth for now
-    repo = S3YumRepo('env', repo_url)
+    repo_url = arguments['--repourl']
+    package = arguments['--package']
+    repo = S3YumRepo('env', repo_url, debug)
+    if package in repo.packages.keys():
+        print "Package {0} found! Version: {1}".format(package, repo.packages[package]) 
 
 if __name__ == '__main__':
     main()
