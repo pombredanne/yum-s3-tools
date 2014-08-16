@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 Usage: 
-    yum-s3-verify.py --repourl=<repo-url> --package=<package-name>  [--env|--iam] [--debug] [-v]
+    yum-s3-verify.py --repourl=<repo-url> --package=<package-name>  [--env|--iam] [--debug]
 
 Attributes:
     --repourl=<repourl> -r      Package name to search for
