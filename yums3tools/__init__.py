@@ -1,24 +1,6 @@
-#!/usr/bin/env python
-"""
-Usage: 
-    yum-s3-verify.py --repourl=<repo-url> --package=<package-name>  [--env|--iam] [--debug]
-
-Attributes:
-    --repourl=<repourl> -r      Package name to search for
-    --package=<package-name> -p      Package name to search for
-    --env                                 Pull credentials from the environment
-    --iam                                 Use IAM policy (Instance Profile) to obtain credentials
-    --debug                               Show more debug info
-"""
-
-
-
-#from boto.s3.connection import S3Connection
-#from boto.s3.key import Key
 import boto
 import os
 import sys
-import docopt
 import tempfile
 from xml.dom import minidom
 import bz2,sqlite3
@@ -41,7 +23,7 @@ class Credentials(object):
         pass
 
 class S3YumRepo(object):
-    def __init__(self, auth, repo_url, debug = False):
+    def __init__(self, auth, repo_url, filter, debug=False):
         creds = Credentials()
         (access_key, secret_key) = getattr(creds, auth)
         s3 = boto.connect_s3(aws_access_key_id=access_key,
@@ -49,6 +31,7 @@ class S3YumRepo(object):
         (self.repo_bucket_name, self.repo_path) = self.parse_s3_url(repo_url)
         self.bucket = s3.get_bucket(self.repo_bucket_name)
         self.repomd = self.bucket.get_key("{0}/repodata/repomd.xml".format(self.repo_path)).read()
+        self.filter = filter
         if debug: 
             print "Getting repomd" 
             print self.repomd
@@ -61,10 +44,16 @@ class S3YumRepo(object):
             print "Using tmpdir"
             print self.tmpdir
         for location in self.locations:
-            if debug:
-                print "Processing {0}".format(location)
             dest_filename = os.path.basename(location)
             sqlite_db = dest_filename.partition('.')[0]
+            if self.filter: 
+                if sqlite_db == self.filter:
+                    if debug:
+                        print "Processing {0}".format(location)
+                else:
+                    if debug:
+                        print "Skipping {0}".format(location)
+                    continue
             key = self.bucket.get_key("{0}/{1}".format(self.repo_path,location))
             if debug:
                 print "key:{0}".format(key)
@@ -116,18 +105,7 @@ class S3YumRepo(object):
         return locations
 
 def main():
-    arguments = docopt.docopt(__doc__)
-    debug = arguments['--debug']
-    if debug: 
-        print arguments
-    #repo_url should follow the format of 
-    #repo_url='https://com.twilio.dev.packages.s3.amazonaws.com/cent6/'
-    #hardcoding env auth for now
-    repo_url = arguments['--repourl']
-    package = arguments['--package']
-    repo = S3YumRepo('env', repo_url, debug)
-    if package in repo.packages.keys():
-        print "Package {0} found! Version: {1}".format(package, repo.packages[package]) 
+    pass
 
 if __name__ == '__main__':
     main()
