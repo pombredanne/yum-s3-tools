@@ -18,6 +18,13 @@ Attributes:
     --debug                               Show more debug info
 ```
 
+#Example
+```
+. ~/aws-config/dev.sh
+/yum-s3-verify.py --env -r https://com.twilio.dev.snapshots.s3.amazonaws.com/cent6/ -p testartifact-snapshot
+Package testartifact-snapshot found! Version: 0-14
+```
+
 
 
 
